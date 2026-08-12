@@ -1,0 +1,31 @@
+# Host-header routing — stands in for the DNS + edge layer of the real product.
+# Plain HTTP (no auto-TLS) because this is a local simulation.
+
+http://www.brydon.localhost {
+	root * /srv/marketing
+	file_server
+}
+
+http://portal.brydon.localhost {
+	reverse_proxy directory:8000
+}
+
+http://riverside.brydon.localhost {
+	reverse_proxy app-riverside:8000
+}
+
+http://lakeside.brydon.localhost {
+	reverse_proxy app-lakeside:8000
+}
+
+http://maple.brydon.localhost {
+	reverse_proxy app-maple:8000
+}
+
+http://harborview.brydon.localhost {
+	reverse_proxy app-harborview:8000
+}
+
+http://sunrise.brydon.localhost {
+	reverse_proxy app-sunrise:8000
+}

@@ -1,0 +1,134 @@
+# Simulated single-tenant fleet for the Brydon Health exercise.
+#
+# Design intent: each "customer" is a genuinely isolated deployment —
+# its own Postgres instance (not just a schema) and its own app process,
+# reachable only via its own subdomain. The only shared components are the
+# reverse proxy (stand-in for DNS/edge) and the tenant directory service,
+# which is deliberately the minimal piece of shared state (see README).
+#
+# Subdomains (via Caddy on http://*.brydon.localhost:8080):
+#   www.brydon.localhost        -> marketing site (static)
+#   portal.brydon.localhost     -> patient portal discovery (directory svc)
+#   riverside.brydon.localhost  -> Riverside Pediatric Therapy
+#   lakeside.brydon.localhost   -> Lakeside Pediatrics
+#   maple.brydon.localhost      -> Maple Grove Therapy
+#   harborview.brydon.localhost -> Harborview Kids
+#   sunrise.brydon.localhost    -> Sunrise Speech & OT
+#
+# *.localhost resolves to 127.0.0.1 on modern OSes/browsers — no /etc/hosts edits.
+
+x-tenant-app: &tenant-app
+  build: ./tenant_app
+  restart: unless-stopped
+  depends_on: []
+
+x-tenant-db: &tenant-db
+  image: postgres:16-alpine
+  restart: unless-stopped
+  environment: &tenant-db-env
+    POSTGRES_USER: ehr
+    POSTGRES_PASSWORD: ehr_local_only
+    POSTGRES_DB: ehr
+
+services:
+  # ---------- shared edge ----------
+  proxy:
+    image: caddy:2-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./marketing:/srv/marketing:ro
+    depends_on:
+      - directory
+      - app-riverside
+      - app-lakeside
+      - app-maple
+      - app-harborview
+      - app-sunrise
+
+  # ---------- control plane (the ONLY shared state) ----------
+  directory:
+    build: ./directory
+    environment:
+      SECRET_KEY: dev-only-not-a-real-secret
+      SMTP_HOST: mail
+      SMTP_PORT: "1025"
+      BASE_DOMAIN: brydon.localhost:8080
+      SEED_FILE: /seeds/directory_seed.json
+    volumes:
+      - ./seeds:/seeds:ro
+    depends_on:
+      - mail
+
+  # Local mail catcher — magic-link emails land here so a reviewer
+  # can actually click them: http://localhost:8025
+  mail:
+    image: axllent/mailpit
+    ports:
+      - "8025:8025"
+
+  # ---------- tenant: riverside ----------
+  db-riverside:
+    <<: *tenant-db
+    volumes:
+      - ./seeds/init/riverside.sql:/docker-entrypoint-initdb.d/init.sql:ro
+  app-riverside:
+    <<: *tenant-app
+    environment:
+      TENANT_ID: riverside
+      TENANT_NAME: "Riverside Pediatric Therapy"
+      DATABASE_URL: postgresql://ehr:ehr_local_only@db-riverside:5432/ehr
+    depends_on: [db-riverside]
+
+  # ---------- tenant: lakeside ----------
+  db-lakeside:
+    <<: *tenant-db
+    volumes:
+      - ./seeds/init/lakeside.sql:/docker-entrypoint-initdb.d/init.sql:ro
+  app-lakeside:
+    <<: *tenant-app
+    environment:
+      TENANT_ID: lakeside
+      TENANT_NAME: "Lakeside Pediatrics"
+      DATABASE_URL: postgresql://ehr:ehr_local_only@db-lakeside:5432/ehr
+    depends_on: [db-lakeside]
+
+  # ---------- tenant: maple ----------
+  db-maple:
+    <<: *tenant-db
+    volumes:
+      - ./seeds/init/maple.sql:/docker-entrypoint-initdb.d/init.sql:ro
+  app-maple:
+    <<: *tenant-app
+    environment:
+      TENANT_ID: maple
+      TENANT_NAME: "Maple Grove Therapy"
+      DATABASE_URL: postgresql://ehr:ehr_local_only@db-maple:5432/ehr
+    depends_on: [db-maple]
+
+  # ---------- tenant: harborview ----------
+  db-harborview:
+    <<: *tenant-db
+    volumes:
+      - ./seeds/init/harborview.sql:/docker-entrypoint-initdb.d/init.sql:ro
+  app-harborview:
+    <<: *tenant-app
+    environment:
+      TENANT_ID: harborview
+      TENANT_NAME: "Harborview Kids"
+      DATABASE_URL: postgresql://ehr:ehr_local_only@db-harborview:5432/ehr
+    depends_on: [db-harborview]
+
+  # ---------- tenant: sunrise ----------
+  db-sunrise:
+    <<: *tenant-db
+    volumes:
+      - ./seeds/init/sunrise.sql:/docker-entrypoint-initdb.d/init.sql:ro
+  app-sunrise:
+    <<: *tenant-app
+    environment:
+      TENANT_ID: sunrise
+      TENANT_NAME: "Sunrise Speech & OT"
+      DATABASE_URL: postgresql://ehr:ehr_local_only@db-sunrise:5432/ehr
+    depends_on: [db-sunrise]

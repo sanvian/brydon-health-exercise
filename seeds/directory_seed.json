@@ -1,0 +1,24 @@
+{
+  "riverside": [
+    "ava.parent@example.com",
+    "okafor.family@example.com",
+    "guardian.two-clinics@example.com"
+  ],
+  "lakeside": [
+    "petrov.home@example.com",
+    "guardian.two-clinics@example.com",
+    "silva.parents@example.com"
+  ],
+  "maple": [
+    "haddad.family@example.com",
+    "kim.household@example.com"
+  ],
+  "harborview": [
+    "rossi.parent@example.com",
+    "diallo.family@example.com"
+  ],
+  "sunrise": [
+    "novak.home@example.com",
+    "tanaka.family@example.com"
+  ]
+}
