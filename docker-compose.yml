@@ -29,6 +29,11 @@ x-tenant-db: &tenant-db
     POSTGRES_USER: ehr
     POSTGRES_PASSWORD: ehr_local_only
     POSTGRES_DB: ehr
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ehr -d ehr" ]
+      interval: 2s
+      timeout: 2s
+      retries: 15
 
 services:
   # ---------- shared edge ----------
@@ -79,7 +84,9 @@ services:
       TENANT_ID: riverside
       TENANT_NAME: "Riverside Pediatric Therapy"
       DATABASE_URL: postgresql://ehr:ehr_local_only@db-riverside:5432/ehr
-    depends_on: [db-riverside]
+    depends_on:
+      db-riverside:
+        condition: service_healthy
 
   # ---------- tenant: lakeside ----------
   db-lakeside:
@@ -92,7 +99,9 @@ services:
       TENANT_ID: lakeside
       TENANT_NAME: "Lakeside Pediatrics"
       DATABASE_URL: postgresql://ehr:ehr_local_only@db-lakeside:5432/ehr
-    depends_on: [db-lakeside]
+    depends_on:
+      db-lakeside:
+        condition: service_healthy
 
   # ---------- tenant: maple ----------
   db-maple:
@@ -105,7 +114,9 @@ services:
       TENANT_ID: maple
       TENANT_NAME: "Maple Grove Therapy"
       DATABASE_URL: postgresql://ehr:ehr_local_only@db-maple:5432/ehr
-    depends_on: [db-maple]
+    depends_on:
+      db-maple:
+        condition: service_healthy
 
   # ---------- tenant: harborview ----------
   db-harborview:
@@ -118,7 +129,9 @@ services:
       TENANT_ID: harborview
       TENANT_NAME: "Harborview Kids"
       DATABASE_URL: postgresql://ehr:ehr_local_only@db-harborview:5432/ehr
-    depends_on: [db-harborview]
+    depends_on:
+      db-harborview:
+        condition: service_healthy
 
   # ---------- tenant: sunrise ----------
   db-sunrise:
@@ -131,4 +144,6 @@ services:
       TENANT_ID: sunrise
       TENANT_NAME: "Sunrise Speech & OT"
       DATABASE_URL: postgresql://ehr:ehr_local_only@db-sunrise:5432/ehr
-    depends_on: [db-sunrise]
+    depends_on:
+      db-sunrise:
+        condition: service_healthy
