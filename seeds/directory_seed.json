@@ -1,24 +1,59 @@
 {
-  "riverside": [
-    "ava.parent@example.com",
-    "okafor.family@example.com",
-    "guardian.two-clinics@example.com"
-  ],
-  "lakeside": [
-    "petrov.home@example.com",
-    "guardian.two-clinics@example.com",
-    "silva.parents@example.com"
-  ],
-  "maple": [
-    "haddad.family@example.com",
-    "kim.household@example.com"
-  ],
-  "harborview": [
-    "rossi.parent@example.com",
-    "diallo.family@example.com"
-  ],
-  "sunrise": [
-    "novak.home@example.com",
-    "tanaka.family@example.com"
-  ]
+  "tenants": {
+    "riverside": {
+      "name": "Riverside Pediatric Therapy",
+      "patients": [
+        "ava.parent@example.com",
+        "okafor.family@example.com",
+        "guardian.two-clinics@example.com"
+      ],
+      "providers": [
+        "frontdesk@riversidepeds.com",
+        "dr.chen@riversidepeds.com"
+      ]
+    },
+    "lakeside": {
+      "name": "Lakeside Pediatrics",
+      "patients": [
+        "petrov.home@example.com",
+        "guardian.two-clinics@example.com",
+        "silva.parents@example.com",
+        "dr.chen@riversidepeds.com"
+      ],
+      "providers": [
+        "office@lakesidepediatrics.com",
+        "lakesidepedsoffice@gmail.com"
+      ]
+    },
+    "maple": {
+      "name": "Maple Grove Therapy",
+      "patients": [
+        "haddad.family@example.com",
+        "kim.household@example.com"
+      ],
+      "providers": [
+        "hello@maplegrovetherapy.com"
+      ]
+    },
+    "harborview": {
+      "name": "Harborview Kids",
+      "patients": [
+        "rossi.parent@example.com",
+        "diallo.family@example.com"
+      ],
+      "providers": [
+        "staff@harborviewkids.com"
+      ]
+    },
+    "sunrise": {
+      "name": "Sunrise Speech & OT",
+      "patients": [
+        "novak.home@example.com",
+        "tanaka.family@example.com"
+      ],
+      "providers": [
+        "office@sunrisespeech.com"
+      ]
+    }
+  }
 }
