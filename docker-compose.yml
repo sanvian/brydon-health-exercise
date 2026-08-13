@@ -57,6 +57,9 @@ services:
     build: ./directory
     environment:
       SECRET_KEY: dev-only-not-a-real-secret
+      # Held outside the datastore on purpose: a dump of the email index is
+      # useless without it (see README "The tenant directory").
+      PEPPER: dev-only-pepper
       SMTP_HOST: mail
       SMTP_PORT: "1025"
       BASE_DOMAIN: brydon.localhost:8080
