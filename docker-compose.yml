@@ -22,6 +22,16 @@ x-tenant-app: &tenant-app
   restart: unless-stopped
   depends_on: []
 
+# Shared by all tenant apps. SECRET_KEY must match the directory's so the
+# apps can verify handoff tokens (symmetric for simulation simplicity — the
+# real product would use asymmetric signing; see README).
+x-tenant-app-env: &tenant-app-env
+  SECRET_KEY: dev-only-not-a-real-secret
+  SMTP_HOST: mail
+  SMTP_PORT: "1025"
+  DIRECTORY_URL: http://directory:8000
+  BASE_DOMAIN: brydon.localhost:8080
+
 x-tenant-db: &tenant-db
   image: postgres:16-alpine
   restart: unless-stopped
@@ -84,6 +94,7 @@ services:
   app-riverside:
     <<: *tenant-app
     environment:
+      <<: *tenant-app-env
       TENANT_ID: riverside
       TENANT_NAME: "Riverside Pediatric Therapy"
       DATABASE_URL: postgresql://ehr:ehr_local_only@db-riverside:5432/ehr
@@ -99,6 +110,7 @@ services:
   app-lakeside:
     <<: *tenant-app
     environment:
+      <<: *tenant-app-env
       TENANT_ID: lakeside
       TENANT_NAME: "Lakeside Pediatrics"
       DATABASE_URL: postgresql://ehr:ehr_local_only@db-lakeside:5432/ehr
@@ -114,6 +126,7 @@ services:
   app-maple:
     <<: *tenant-app
     environment:
+      <<: *tenant-app-env
       TENANT_ID: maple
       TENANT_NAME: "Maple Grove Therapy"
       DATABASE_URL: postgresql://ehr:ehr_local_only@db-maple:5432/ehr
@@ -129,6 +142,7 @@ services:
   app-harborview:
     <<: *tenant-app
     environment:
+      <<: *tenant-app-env
       TENANT_ID: harborview
       TENANT_NAME: "Harborview Kids"
       DATABASE_URL: postgresql://ehr:ehr_local_only@db-harborview:5432/ehr
@@ -144,6 +158,7 @@ services:
   app-sunrise:
     <<: *tenant-app
     environment:
+      <<: *tenant-app-env
       TENANT_ID: sunrise
       TENANT_NAME: "Sunrise Speech & OT"
       DATABASE_URL: postgresql://ehr:ehr_local_only@db-sunrise:5432/ehr

@@ -7,18 +7,37 @@ another tenant's data — network topology and credentials enforce
 isolation, not application logic. That property is what the real
 product's compliance story rests on, and what any multi-tenant
 migration must preserve.
+
+Authentication is deliberately SIMULATED (see README "Assumptions"):
+the exercise is about tenant discovery, not identity. What matters
+architecturally is that the login form lives HERE, on the tenant's own
+origin — credentials never touch the shared portal, and origin-bound
+auth (passkeys/WebAuthn, per-tenant MFA) stays possible.
 """
 
 import json
 import os
+import smtplib
+import urllib.request
+from email.message import EmailMessage
 
 import psycopg
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI
+from fastapi.responses import HTMLResponse, JSONResponse
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 TENANT_ID = os.environ["TENANT_ID"]
 TENANT_NAME = os.environ["TENANT_NAME"]
 DATABASE_URL = os.environ["DATABASE_URL"]
+SECRET_KEY = os.environ["SECRET_KEY"]
+DIRECTORY_URL = os.environ.get("DIRECTORY_URL", "http://directory:8000")
+SMTP_HOST = os.environ.get("SMTP_HOST", "mail")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "1025"))
+
+# Must match the directory's handoff serializer. In the real product this
+# would be asymmetric: directory signs, tenants hold only the public key.
+_handoff = URLSafeTimedSerializer(SECRET_KEY, salt="tenant-handoff")
+HANDOFF_MAX_AGE = 60
 
 app = FastAPI(title=f"EHR — {TENANT_NAME}")
 
@@ -27,18 +46,50 @@ def db():
     return psycopg.connect(DATABASE_URL)
 
 
+def verify_handoff(token: str | None, audience: str) -> bool:
+    """True iff the directory minted this handoff, for THIS tenant and this
+    audience, within the last minute. Proves routing provenance — not
+    identity; the visitor still has to log in below."""
+    if not token:
+        return False
+    try:
+        data = _handoff.loads(token, max_age=HANDOFF_MAX_AGE)
+    except (BadSignature, SignatureExpired):
+        return False
+    return data.get("t") == TENANT_ID and data.get("aud") == audience
+
+
+def _page(body: str) -> str:
+    return f"""
+    <html><body style="font-family: sans-serif; max-width: 640px; margin: 3rem auto;">
+      {body}
+      <hr><small>Simulated single-tenant EHR instance — isolated app + isolated database.</small>
+    </body></html>
+    """
+
+
+def _login_form(role: str) -> str:
+    # Simulated: renders the form, accepts nothing. Real credentials + MFA
+    # are out of scope; the point is WHERE this form lives (tenant origin).
+    return f"""
+      <form style="border: 1px solid #ccc; padding: 1rem; max-width: 320px;">
+        <b>{role} sign-in</b> <i>(simulated — auth out of scope)</i><br><br>
+        <input placeholder="username" style="width: 100%; padding: .4rem;"><br><br>
+        <input placeholder="password" type="password" style="width: 100%; padding: .4rem;"><br><br>
+        <button type="button" disabled>Sign in</button>
+      </form>
+    """
+
+
 @app.get("/", response_class=HTMLResponse)
 def home():
     with db() as conn:
         n = conn.execute("SELECT count(*) FROM patients").fetchone()[0]
-    return f"""
-    <html><body style="font-family: sans-serif; max-width: 640px; margin: 3rem auto;">
+    return _page(f"""
       <h1>{TENANT_NAME}</h1>
       <p>Tenant: <code>{TENANT_ID}</code> &middot; Patients on file: <b>{n}</b></p>
-      <p><a href="/patients">Patient roster</a></p>
-      <hr><small>Simulated single-tenant EHR instance — isolated app + isolated database.</small>
-    </body></html>
-    """
+      <p><a href="/patients">Patient roster</a> &middot; <a href="/login">Staff sign-in</a></p>
+    """)
 
 
 @app.get("/patients", response_class=HTMLResponse)
@@ -52,29 +103,91 @@ def patients():
         r = resource if isinstance(resource, dict) else json.loads(resource)
         name = r["name"][0]
         items += f"<li>{name['given'][0]} {name['family']} — DOB {r['birthDate']}</li>"
-    return f"""
-    <html><body style="font-family: sans-serif; max-width: 640px; margin: 3rem auto;">
+    return _page(f"""
       <h2>{TENANT_NAME} — Patients</h2>
       <ul>{items}</ul>
       <p><a href="/">Back</a></p>
-    </body></html>
-    """
+    """)
+
+
+@app.get("/login", response_class=HTMLResponse)
+def staff_login(handoff: str | None = None):
+    """Staff sign-in page. Public — knowing a clinic's subdomain reveals
+    nothing the clinic's own website doesn't. The handoff banner just shows
+    provenance when the visitor arrived via the marketing Log In flow."""
+    banner = (
+        '<p style="background:#e8f5e9;padding:.5rem;">Routed here by the '
+        "Brydon Health portal &#10003;</p>"
+        if verify_handoff(handoff, "provider")
+        else ""
+    )
+    return _page(f"<h1>{TENANT_NAME}</h1>{banner}{_login_form('Staff')}")
 
 
 @app.get("/portal/landing", response_class=HTMLResponse)
-def portal_landing(request: Request):
-    """Where a patient lands after the central portal resolves their tenant.
+def portal_landing(handoff: str | None = None):
+    """Where a patient lands after the central portal resolved their tenant.
 
-    TODO(portal): verify the signed handoff token from the directory service
-    (query param), establish a patient session, and greet the patient by name.
-    Until then this just proves the routing works end-to-end.
+    The handoff token proves the directory did the routing (right tenant,
+    right audience, within 60s). It does NOT authenticate anyone — the
+    patient signs in here, on this clinic's own origin.
     """
-    return f"""
-    <html><body style="font-family: sans-serif; max-width: 640px; margin: 3rem auto;">
+    if not verify_handoff(handoff, "patient"):
+        return _page(f"""
+          <h1>{TENANT_NAME} patient portal</h1>
+          <p>This page is reached through the Brydon Health portal.
+             <a href="http://portal.{os.environ.get('BASE_DOMAIN', 'brydon.localhost:8080')}/">
+             Request a sign-in link</a>.</p>
+        """)
+    return _page(f"""
       <h1>Welcome to the {TENANT_NAME} patient portal</h1>
-      <p>You were routed here by the central portal. (Token verification: TODO)</p>
-    </body></html>
+      <p style="background:#e8f5e9;padding:.5rem;">Routed here by the
+         Brydon Health portal &#10003; — sign in below to continue.</p>
+      {_login_form('Patient')}
+    """)
+
+
+@app.get("/demo/remind")
+def send_reminder(email: str):
+    """Simulates the tenant's reminder job: this instance already knows its
+    own patients, so it asks the directory for a pre-signed deep link (no
+    discovery round-trip) and emails it with the appointment details.
     """
+    with db() as conn:
+        known = conn.execute(
+            "SELECT 1 FROM portal_users WHERE email = %s", (email,)
+        ).fetchone()
+    if not known:
+        return JSONResponse({"error": "not a portal user of this tenant"}, status_code=404)
+
+    req = urllib.request.Request(
+        f"{DIRECTORY_URL}/internal/deep-link",
+        data=json.dumps({"tenant_id": TENANT_ID}).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req) as resp:
+        url = json.load(resp)["url"]
+
+    msg = EmailMessage()
+    msg["From"] = f"{TENANT_NAME} <reminders@{TENANT_ID}.example>"
+    msg["To"] = email
+    msg["Subject"] = f"Appointment reminder — {TENANT_NAME}"
+    msg.set_content(
+        "Reminder: you have a therapy appointment on Thursday at 3:00 PM.\n\n"
+        f"View details in the patient portal: {url}\n"
+    )
+    msg.add_alternative(
+        f"""<html><body style="font-family: sans-serif;">
+        <p>Reminder: you have a therapy appointment on <b>Thursday at 3:00 PM</b>.</p>
+        <p><a href="{url}" style="padding:.5rem 1rem;background:#1a5fb4;color:white;
+           text-decoration:none;">View in patient portal</a></p>
+        <p><small>This link takes you to the {TENANT_NAME} sign-in page.</small></p>
+        </body></html>""",
+        subtype="html",
+    )
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as smtp:
+        smtp.send_message(msg)
+    return {"sent": True, "to": email, "tenant": TENANT_ID}
 
 
 @app.get("/healthz")
