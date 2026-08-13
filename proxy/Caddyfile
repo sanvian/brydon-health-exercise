@@ -7,6 +7,9 @@ http://www.brydon.localhost {
 }
 
 http://portal.brydon.localhost {
+	# The deep-link mint API is service-to-service only (tenant apps call
+	# it over the compose network). Never expose it at the public edge.
+	respond /internal/* 404
 	reverse_proxy directory:8000
 }
 

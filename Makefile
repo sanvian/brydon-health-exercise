@@ -23,3 +23,9 @@ demo:
 	@echo ""
 	@curl -s http://lakeside.brydon.localhost:8080/healthz
 	@echo ""
+
+# Simulate Riverside's reminder job: pre-signed deep link, no discovery
+# round-trip. The email lands in Mailpit (http://localhost:8025).
+remind:
+	@curl -s "http://riverside.brydon.localhost:8080/demo/remind?email=ava.parent@example.com"
+	@echo ""
