@@ -197,6 +197,9 @@ R4-shaped instead (`seeds/generate.py`).
   provider.
 - Rate limiting and used-token state are in-memory (per-process) — Redis with
   TTLs in a real deployment.
+- Each tenant's `/patients` roster is unauthenticated **on purpose**, as a
+  labeled demo seam: it lets a reviewer verify the isolation claim in two
+  clicks. In the real product it sits behind staff authentication.
 
 ## Bonus: fleet operations problem
 

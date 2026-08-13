@@ -88,12 +88,19 @@ def home():
     return _page(f"""
       <h1>{TENANT_NAME}</h1>
       <p>Tenant: <code>{TENANT_ID}</code> &middot; Patients on file: <b>{n}</b></p>
-      <p><a href="/patients">Patient roster</a> &middot; <a href="/login">Staff sign-in</a></p>
+      <p><a href="/login">Staff sign-in</a> &middot; <a href="/portal/landing">Patient portal</a></p>
+      <p style="background:#fff8e1;padding:.5rem;"><small><b>Demo seam:</b>
+         <a href="/patients">patient roster</a> — the isolation proof (same
+         route, different subdomain, different children). In the real product
+         this sits behind staff authentication, which is out of scope here.</small></p>
     """)
 
 
 @app.get("/patients", response_class=HTMLResponse)
 def patients():
+    """Demo seam: unauthenticated on purpose, so a reviewer can verify the
+    isolation claim in two clicks (riverside/patients vs lakeside/patients).
+    In the real product this is staff-authenticated EHR data."""
     with db() as conn:
         rows = conn.execute(
             "SELECT resource FROM patients ORDER BY id"
@@ -126,23 +133,26 @@ def staff_login(handoff: str | None = None):
 
 @app.get("/portal/landing", response_class=HTMLResponse)
 def portal_landing(handoff: str | None = None):
-    """Where a patient lands after the central portal resolved their tenant.
+    """The clinic's patient sign-in page — on the tenant's own origin.
 
-    The handoff token proves the directory did the routing (right tenant,
-    right audience, within 60s). It does NOT authenticate anyone — the
-    patient signs in here, on this clinic's own origin.
+    Reachable two ways, both first-class: directly (a returning patient who
+    knows their clinic) or via the central portal / a reminder deep link (a
+    patient who doesn't). The handoff token, when present and valid, proves
+    the directory did the routing (right tenant, right audience, within
+    60s) — provenance, not permission. It does NOT authenticate anyone,
+    and its absence gates nothing: the sign-in form always renders.
     """
-    if not verify_handoff(handoff, "patient"):
-        return _page(f"""
-          <h1>{TENANT_NAME} patient portal</h1>
-          <p>This page is reached through the Brydon Health portal.
-             <a href="http://portal.{os.environ.get('BASE_DOMAIN', 'brydon.localhost:8080')}/">
-             Request a sign-in link</a>.</p>
-        """)
+    banner = (
+        '<p style="background:#e8f5e9;padding:.5rem;">Routed here by the '
+        "Brydon Health portal &#10003; — sign in below to continue.</p>"
+        if verify_handoff(handoff, "patient")
+        else f"""<p><small>Don't know your clinic's portal address?
+           <a href="http://portal.{os.environ.get('BASE_DOMAIN', 'brydon.localhost:8080')}/">
+           Find it via the Brydon Health portal</a>.</small></p>"""
+    )
     return _page(f"""
       <h1>Welcome to the {TENANT_NAME} patient portal</h1>
-      <p style="background:#e8f5e9;padding:.5rem;">Routed here by the
-         Brydon Health portal &#10003; — sign in below to continue.</p>
+      {banner}
       {_login_form('Patient')}
     """)
 
