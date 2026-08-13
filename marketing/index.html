@@ -4,11 +4,21 @@
 <body style="font-family: sans-serif; max-width: 720px; margin: 4rem auto;">
   <h1>Brydon Health</h1>
   <p>The EHR built for pediatric therapy practices.</p>
-  <!-- The single Log In link. Deliberately points at the shared discovery
-       flow — no customer dropdown, no tenant list ever leaves the server.
-       TODO(core): provider-audience variant of the portal lookup form. -->
-  <p><a href="http://portal.brydon.localhost:8080/?audience=provider"
-        style="padding: .6rem 1.2rem; background: #1a5fb4; color: white; text-decoration: none;">
-     Log In</a></p>
+  <!-- The single Log In entry point. Posts to the shared discovery service
+       with audience=provider: a recognized staff email redirects straight
+       to that clinic's own login page (home-realm discovery); anything else
+       gets the same uniform response as the patient portal. No customer
+       dropdown — the tenant list never leaves the server. -->
+  <form method="post" action="http://portal.brydon.localhost:8080/lookup"
+        style="border: 1px solid #ccc; padding: 1rem; max-width: 360px;">
+    <b>Provider log in</b><br><br>
+    <input type="email" name="email" required placeholder="you@yourclinic.com"
+           style="width: 100%; padding: .5rem;">
+    <input type="hidden" name="audience" value="provider">
+    <button style="margin-top: .75rem; padding: .6rem 1.2rem; background: #1a5fb4;
+                   color: white; border: none;">Log In</button>
+  </form>
+  <p><small>Patient or guardian? Use the
+     <a href="http://portal.brydon.localhost:8080/">patient portal</a>.</small></p>
 </body>
 </html>
