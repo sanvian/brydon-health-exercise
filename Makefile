@@ -1,4 +1,4 @@
-.PHONY: up down seed logs demo
+.PHONY: up down seed logs demo verify remind
 
 seed:
 	python3 seeds/generate.py
@@ -16,6 +16,11 @@ down:
 
 logs:
 	docker compose logs -f directory
+
+# Full isolation proof: distinct data, unroutable cross-tenant DBs,
+# per-tenant credentials. See scripts/verify_isolation.sh.
+verify:
+	@bash scripts/verify_isolation.sh
 
 # Quick isolation proof: same route, different subdomain, different data.
 demo:

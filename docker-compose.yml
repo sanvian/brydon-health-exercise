@@ -37,7 +37,6 @@ x-tenant-db: &tenant-db
   restart: unless-stopped
   environment: &tenant-db-env
     POSTGRES_USER: ehr
-    POSTGRES_PASSWORD: ehr_local_only
     POSTGRES_DB: ehr
   healthcheck:
     test: [ "CMD-SHELL", "pg_isready -U ehr -d ehr" ]
@@ -61,6 +60,7 @@ services:
       - app-maple
       - app-harborview
       - app-sunrise
+    networks: [shared]
 
   # ---------- control plane (the ONLY shared state) ----------
   directory:
@@ -76,6 +76,7 @@ services:
       SEED_FILE: /seeds/directory_seed.json
     volumes:
       - ./seeds:/seeds:ro
+    networks: [shared]
     depends_on:
       - mail
 
@@ -83,12 +84,17 @@ services:
   # can actually click them: http://localhost:8025
   mail:
     image: axllent/mailpit
+    networks: [shared]
     ports:
       - "8025:8025"
 
   # ---------- tenant: riverside ----------
   db-riverside:
     <<: *tenant-db
+    environment:
+      <<: *tenant-db-env
+      POSTGRES_PASSWORD: ehr_riverside_pw
+    networks: [net-riverside]
     volumes:
       - ./seeds/init/riverside.sql:/docker-entrypoint-initdb.d/init.sql:ro
   app-riverside:
@@ -97,7 +103,8 @@ services:
       <<: *tenant-app-env
       TENANT_ID: riverside
       TENANT_NAME: "Riverside Pediatric Therapy"
-      DATABASE_URL: postgresql://ehr:ehr_local_only@db-riverside:5432/ehr
+      DATABASE_URL: postgresql://ehr:ehr_riverside_pw@db-riverside:5432/ehr
+    networks: [shared, net-riverside]
     depends_on:
       db-riverside:
         condition: service_healthy
@@ -105,6 +112,10 @@ services:
   # ---------- tenant: lakeside ----------
   db-lakeside:
     <<: *tenant-db
+    environment:
+      <<: *tenant-db-env
+      POSTGRES_PASSWORD: ehr_lakeside_pw
+    networks: [net-lakeside]
     volumes:
       - ./seeds/init/lakeside.sql:/docker-entrypoint-initdb.d/init.sql:ro
   app-lakeside:
@@ -113,7 +124,8 @@ services:
       <<: *tenant-app-env
       TENANT_ID: lakeside
       TENANT_NAME: "Lakeside Pediatrics"
-      DATABASE_URL: postgresql://ehr:ehr_local_only@db-lakeside:5432/ehr
+      DATABASE_URL: postgresql://ehr:ehr_lakeside_pw@db-lakeside:5432/ehr
+    networks: [shared, net-lakeside]
     depends_on:
       db-lakeside:
         condition: service_healthy
@@ -121,6 +133,10 @@ services:
   # ---------- tenant: maple ----------
   db-maple:
     <<: *tenant-db
+    environment:
+      <<: *tenant-db-env
+      POSTGRES_PASSWORD: ehr_maple_pw
+    networks: [net-maple]
     volumes:
       - ./seeds/init/maple.sql:/docker-entrypoint-initdb.d/init.sql:ro
   app-maple:
@@ -129,7 +145,8 @@ services:
       <<: *tenant-app-env
       TENANT_ID: maple
       TENANT_NAME: "Maple Grove Therapy"
-      DATABASE_URL: postgresql://ehr:ehr_local_only@db-maple:5432/ehr
+      DATABASE_URL: postgresql://ehr:ehr_maple_pw@db-maple:5432/ehr
+    networks: [shared, net-maple]
     depends_on:
       db-maple:
         condition: service_healthy
@@ -137,6 +154,10 @@ services:
   # ---------- tenant: harborview ----------
   db-harborview:
     <<: *tenant-db
+    environment:
+      <<: *tenant-db-env
+      POSTGRES_PASSWORD: ehr_harborview_pw
+    networks: [net-harborview]
     volumes:
       - ./seeds/init/harborview.sql:/docker-entrypoint-initdb.d/init.sql:ro
   app-harborview:
@@ -145,7 +166,8 @@ services:
       <<: *tenant-app-env
       TENANT_ID: harborview
       TENANT_NAME: "Harborview Kids"
-      DATABASE_URL: postgresql://ehr:ehr_local_only@db-harborview:5432/ehr
+      DATABASE_URL: postgresql://ehr:ehr_harborview_pw@db-harborview:5432/ehr
+    networks: [shared, net-harborview]
     depends_on:
       db-harborview:
         condition: service_healthy
@@ -153,6 +175,10 @@ services:
   # ---------- tenant: sunrise ----------
   db-sunrise:
     <<: *tenant-db
+    environment:
+      <<: *tenant-db-env
+      POSTGRES_PASSWORD: ehr_sunrise_pw
+    networks: [net-sunrise]
     volumes:
       - ./seeds/init/sunrise.sql:/docker-entrypoint-initdb.d/init.sql:ro
   app-sunrise:
@@ -161,7 +187,20 @@ services:
       <<: *tenant-app-env
       TENANT_ID: sunrise
       TENANT_NAME: "Sunrise Speech & OT"
-      DATABASE_URL: postgresql://ehr:ehr_local_only@db-sunrise:5432/ehr
+      DATABASE_URL: postgresql://ehr:ehr_sunrise_pw@db-sunrise:5432/ehr
+    networks: [shared, net-sunrise]
     depends_on:
       db-sunrise:
         condition: service_healthy
+
+# Isolation enforced by topology, not just configuration: each tenant's
+# database lives on a private network only that tenant's app can join.
+# app-riverside cannot even RESOLVE db-lakeside, let alone connect. The
+# shared network carries only edge routing, discovery, and mail.
+networks:
+  shared:
+  net-riverside:
+  net-lakeside:
+  net-maple:
+  net-harborview:
+  net-sunrise:

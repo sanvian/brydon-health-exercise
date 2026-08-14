@@ -46,6 +46,8 @@ make up        # builds and starts everything
 6. **Reminder deep links.** `make remind` simulates Riverside's reminder job:
    a pre-signed link lands in Mailpit that skips discovery entirely — one
    click to Riverside's sign-in page, reusable for days.
+7. **Isolation proof.** `make verify` — distinct rosters per tenant,
+   cross-tenant DB hostnames unresolvable, cross-tenant credentials rejected.
 
 ## Architecture
 
@@ -57,10 +59,14 @@ make up        # builds and starts everything
 ```
 
 Five tenants, each a genuinely isolated deployment: its own app container and
-its own Postgres *instance* with its own credentials. Isolation is enforced by
-topology, not by WHERE clauses — no code path in any tenant app can reach
-another tenant's database. Caddy stands in for DNS/edge routing. The only
-shared services are the proxy, Mailpit (the email channel), and the directory.
+its own Postgres *instance*, with its own password, on its own **private
+compose network** that only that tenant's app joins. Isolation is enforced by
+topology, not by WHERE clauses: `app-riverside` cannot even resolve
+`db-lakeside`'s hostname, and lakeside's Postgres rejects riverside's
+credentials. `make verify` proves all three properties mechanically
+(`scripts/verify_isolation.sh`). Caddy stands in for DNS/edge routing. The
+only shared services are the proxy, Mailpit (the email channel), and the
+directory.
 
 ### The tenant directory: deliberate minimalism
 
