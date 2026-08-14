@@ -13,22 +13,34 @@ http://portal.brydon.localhost {
 	reverse_proxy directory:8000
 }
 
+# Every clinic subdomain shares one edge policy. /demo/* is the tenant's
+# simulated internal reminder job (see /demo/remind) — it runs over the
+# compose network, so like the directory's /internal/* it must never be
+# reachable at the public edge. Blocking it here closes an enumeration
+# oracle: /demo/remind 404s for an unknown email but sends mail for a known
+# one, which would let anyone probe whether an address is a given clinic's
+# patient — the exact disclosure the portal's uniform response prevents.
+(tenant) {
+	respond /demo/* 404
+	reverse_proxy {args[0]}
+}
+
 http://riverside.brydon.localhost {
-	reverse_proxy app-riverside:8000
+	import tenant app-riverside:8000
 }
 
 http://lakeside.brydon.localhost {
-	reverse_proxy app-lakeside:8000
+	import tenant app-lakeside:8000
 }
 
 http://maple.brydon.localhost {
-	reverse_proxy app-maple:8000
+	import tenant app-maple:8000
 }
 
 http://harborview.brydon.localhost {
-	reverse_proxy app-harborview:8000
+	import tenant app-harborview:8000
 }
 
 http://sunrise.brydon.localhost {
-	reverse_proxy app-sunrise:8000
+	import tenant app-sunrise:8000
 }

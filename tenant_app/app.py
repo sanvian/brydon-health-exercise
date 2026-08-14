@@ -30,6 +30,9 @@ TENANT_ID = os.environ["TENANT_ID"]
 TENANT_NAME = os.environ["TENANT_NAME"]
 DATABASE_URL = os.environ["DATABASE_URL"]
 SECRET_KEY = os.environ["SECRET_KEY"]
+# Shared secret presented to the directory's /internal/deep-link (mTLS
+# stand-in). Must match the directory's INTERNAL_AUTH.
+INTERNAL_AUTH = os.environ["INTERNAL_AUTH"]
 DIRECTORY_URL = os.environ.get("DIRECTORY_URL", "http://directory:8000")
 SMTP_HOST = os.environ.get("SMTP_HOST", "mail")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "1025"))
@@ -173,7 +176,7 @@ def send_reminder(email: str):
     req = urllib.request.Request(
         f"{DIRECTORY_URL}/internal/deep-link",
         data=json.dumps({"tenant_id": TENANT_ID}).encode(),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "X-Internal-Auth": INTERNAL_AUTH},
     )
     with urllib.request.urlopen(req) as resp:
         url = json.load(resp)["url"]

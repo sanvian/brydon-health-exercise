@@ -27,6 +27,10 @@ x-tenant-app: &tenant-app
 # real product would use asymmetric signing; see README).
 x-tenant-app-env: &tenant-app-env
   SECRET_KEY: dev-only-not-a-real-secret
+  # Shared secret for the service-to-service /internal/deep-link call. Stands
+  # in for mTLS in this simulation: the directory only mints links for callers
+  # that present it. Must match the directory's INTERNAL_AUTH.
+  INTERNAL_AUTH: dev-only-internal-auth
   SMTP_HOST: mail
   SMTP_PORT: "1025"
   DIRECTORY_URL: http://directory:8000
@@ -70,6 +74,9 @@ services:
       # Held outside the datastore on purpose: a dump of the email index is
       # useless without it (see README "The tenant directory").
       PEPPER: dev-only-pepper
+      # Shared secret gating /internal/deep-link (mTLS stand-in). Must match
+      # the tenant apps' INTERNAL_AUTH.
+      INTERNAL_AUTH: dev-only-internal-auth
       SMTP_HOST: mail
       SMTP_PORT: "1025"
       BASE_DOMAIN: brydon.localhost:8080

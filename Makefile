@@ -38,6 +38,11 @@ fleet-migrate:
 
 # Simulate Riverside's reminder job: pre-signed deep link, no discovery
 # round-trip. The email lands in Mailpit (http://localhost:8025).
+# Runs INSIDE the compose network (exec in the tenant container) because
+# /demo/* is edge-blocked — that endpoint is a tenant-internal job, not a
+# public route (see proxy/Caddyfile). This is how the real reminder job
+# would reach it too: over the service network, never via the public edge.
 remind:
-	@curl -s "http://riverside.brydon.localhost:8080/demo/remind?email=ava.parent@example.com"
+	@docker compose exec -T app-riverside python -c \
+		"import urllib.request; print(urllib.request.urlopen('http://localhost:8000/demo/remind?email=ava.parent@example.com').read().decode())"
 	@echo ""

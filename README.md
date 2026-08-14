@@ -119,13 +119,17 @@ Microsoft 365 or Slack resolve a workspace. The disclosure is accepted
 deliberately: staff emails are semi-public and mostly clinic-domain, so a
 redirect reveals little, and only an *exact registered address* triggers
 differential behavior. Unrecognized addresses degrade to the patient posture
-(uniform page), and rate limiting blunts bulk probing.
+(uniform page), and rate limiting blunts bulk probing — keyed on both source
+IP *and* the peppered email hash, so fanning one target address across many
+hosts trips the limit the same way a single noisy IP does.
 
 **Reminder deep links (the PDF's automated-reminders hint).** The sender of a
 reminder — the tenant's own EHR — already knows the tenant, so discovery
 would be pointless friction. The tenant asks the directory to mint a
-pre-signed deep link (`/internal/deep-link`, reachable only on the service
-network; Caddy 404s it at the edge) and embeds it in the reminder email. One
+pre-signed deep link (`/internal/deep-link`, Caddy 404s it at the public edge
+*and* it requires a shared-secret `X-Internal-Auth` header — an mTLS stand-in,
+so a foothold on the service network still can't mint links) and embeds it in
+the reminder email. One
 click, straight to the clinic's sign-in page. The same works for clinic-run
 email campaigns; a Brydon-wide campaign to an unresolved list just links the
 bare portal URL and lets discovery handle each recipient.

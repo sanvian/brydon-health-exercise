@@ -43,6 +43,9 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 SECRET_KEY = os.environ["SECRET_KEY"]
 PEPPER = os.environ["PEPPER"]
+# Shared secret gating the service-to-service mint API. Stands in for mTLS:
+# the directory mints links only for callers that present it.
+INTERNAL_AUTH = os.environ["INTERNAL_AUTH"]
 BASE_DOMAIN = os.environ.get("BASE_DOMAIN", "brydon.localhost:8080")
 SEED_FILE = os.environ.get("SEED_FILE", "/seeds/directory_seed.json")
 SMTP_HOST = os.environ.get("SMTP_HOST", "mail")
@@ -55,7 +58,7 @@ SMTP_PORT = int(os.environ.get("SMTP_PORT", "1025"))
 DISCOVERY_MAX_AGE = 15 * 60
 REMINDER_MAX_AGE = 7 * 24 * 3600
 RATE_LIMIT_MAX = 10         # lookups ...
-RATE_LIMIT_WINDOW = 60.0    # ... per IP per window
+RATE_LIMIT_WINDOW = 60.0    # ... per key (IP and email hash) per window
 
 app = FastAPI(title="Brydon Tenant Directory")
 
@@ -71,7 +74,7 @@ _handoff = URLSafeTimedSerializer(SECRET_KEY, salt="tenant-handoff")
 _index: dict[str, list[dict]] = {}   # email_hash -> [{"t": id, "aud": ...}]
 _tenant_names: dict[str, str] = {}   # tenant_id -> display name
 _used_jtis: set[str] = set()         # single-use enforcement, discovery links
-_rate: dict[str, list[float]] = {}   # ip -> recent request timestamps
+_rate: dict[str, list[float]] = {}   # "ip:.."/"em:.." key -> recent timestamps
 
 
 def email_hash(email: str) -> str:
@@ -91,14 +94,26 @@ def load_seed():
             _index.setdefault(email_hash(e), []).append({"t": tenant_id, "aud": "provider"})
 
 
-def _rate_limited(request: Request) -> bool:
+def _rate_limited(request: Request, email: str | None = None) -> bool:
+    """Throttle on two independent keys: source IP and the peppered email
+    hash. IP alone folds against distributed probing — one target address
+    fanned across many hosts — so the email-hash key catches exactly that
+    (the pepper keeps it non-reversible). A hit on EITHER key limits the
+    request; both keys are always recorded so neither can be starved."""
     # Caddy sets X-Forwarded-For; direct hits fall back to the socket peer.
     ip = (request.headers.get("x-forwarded-for") or request.client.host).split(",")[0].strip()
     now = time.monotonic()
-    recent = [ts for ts in _rate.get(ip, []) if now - ts < RATE_LIMIT_WINDOW]
-    recent.append(now)
-    _rate[ip] = recent
-    return len(recent) > RATE_LIMIT_MAX
+    keys = [f"ip:{ip}"]
+    if email:
+        keys.append(f"em:{email_hash(email)}")
+    limited = False
+    for key in keys:
+        recent = [ts for ts in _rate.get(key, []) if now - ts < RATE_LIMIT_WINDOW]
+        recent.append(now)
+        _rate[key] = recent
+        if len(recent) > RATE_LIMIT_MAX:
+            limited = True
+    return limited
 
 
 # ---------------------------------------------------------------- patient UI
@@ -130,7 +145,7 @@ def lookup(
     audience: str = Form("patient"),
 ):
     """Discovery endpoint — both audiences, one index, two postures."""
-    limited = _rate_limited(request)
+    limited = _rate_limited(request, email)
 
     if audience == "provider":
         if not limited:
@@ -286,15 +301,18 @@ def _dead_link_response() -> HTMLResponse:
 # ------------------------------------------------------------- internal API
 
 @app.post("/internal/deep-link")
-def mint_deep_link(payload: dict):
+def mint_deep_link(payload: dict, request: Request):
     """Mint a pre-signed reminder deep link for a tenant's outbound email
     (automated reminders, clinic campaigns). The tenant already knows who
     its own patients are, so no discovery round-trip is needed — see README.
 
-    Reachable only on the compose network: Caddy returns 404 for /internal/*
-    on the public portal host. In the real product this would be an mTLS
-    service-to-service API.
+    Two layers guard this: Caddy 404s /internal/* at the public edge, and a
+    shared-secret X-Internal-Auth header authenticates the caller on the
+    service network — so a foothold on the network still can't mint links
+    for arbitrary tenants. In the real product the header would be mTLS.
     """
+    if not secrets.compare_digest(request.headers.get("x-internal-auth", ""), INTERNAL_AUTH):
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
     tenant_id = payload["tenant_id"]
     if tenant_id not in _tenant_names:
         return JSONResponse({"error": "unknown tenant"}, status_code=400)
