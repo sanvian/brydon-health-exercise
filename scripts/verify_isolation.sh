@@ -25,7 +25,7 @@ for t in "${TENANTS[@]}"; do
 done
 pass "all 5 tenants report their own tenant id"
 
-rosters=$(for t in "${TENANTS[@]}"; do curl -sf "http://$t.$BASE/patients" | md5; done)
+rosters=$(for t in "${TENANTS[@]}"; do curl -sf "http://$t.$BASE/patients" | cksum; done)
 [ "$(echo "$rosters" | sort -u | wc -l)" -eq 5 ] \
   || fail "two tenants returned identical patient rosters"
 pass "all 5 patient rosters are distinct"
