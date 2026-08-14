@@ -239,17 +239,88 @@ consolidate N databases you can't first prove are at the same version.
 
 ## Migration plan to multi-tenant
 
-<!-- TODO: Phase 0 (this exercise): extract identity/discovery into a
-     control plane. Phase 1: shared Postgres, schema-per-tenant. Phase 2:
-     pooled tables + RLS for the small-customer tail; keep dedicated
-     schemas for enterprise/compliance-sensitive accounts. Per phase:
-     isolation guarantee preserved, rollback mechanism (dual-write window,
-     per-tenant cutover, old deployment kept warm), and the honest risk
-     statement: a bad RLS policy is a breach, not a bug. A central IdP
-     (one Brydon-wide patient login, SSO into tenants) is a candidate
-     later phase — considered for this exercise and deferred as a major
-     shared-infrastructure commitment. -->
+The strategy in one sentence: **change one isolation mechanism at a time,
+per-tenant, with the old deployment kept warm until the new one has proven
+itself — and never let a phase weaken the guarantee the previous phase
+provided.** Each phase below states the guarantee it preserves and its
+rollback.
+
+**Phase 0 — control plane extraction (this exercise).** Discovery, routing,
+and fleet schema tooling move to shared infrastructure; PHI, credentials, and
+authentication do not. *Guarantee:* tenant data and auth remain fully
+isolated; the new shared surface stores only peppered hashes. *Rollback:*
+turn off the portal — tenant subdomains still work exactly as before. This
+phase is deliberately additive.
+
+**Phase 1 — fleet convergence.** Before consolidating anything, make the N
+deployments provably identical: one artifact version fleet-wide, per-tenant
+config (not code) as the only difference, schema versions enforced by the
+migration runner (`ops/fleet_migrate.py`) with drift as a CI failure.
+*Guarantee:* unchanged — this phase touches process, not topology.
+*Rollback:* per-tenant version pinning. You cannot merge N databases you
+can't first prove are at the same schema version; this is why the bonus tool
+exists.
+
+**Phase 2 — shared cluster, schema-per-tenant.** Move tenants onto a shared
+Postgres cluster, one schema per tenant, one *database role* per tenant whose
+grants reach only its own schema. The app tier can consolidate too — tenant
+resolved at the edge (Host header, as here), connection taken from that
+tenant's pool as that tenant's role. *Guarantee:* isolation moves from
+network topology to role grants — still enforced by the database, still not
+by WHERE clauses; an app-tier bug hits a wall of `permission denied`.
+*Migration mechanics, per tenant:* logical-replicate the dedicated instance
+into the shared cluster's schema → verify (row counts + checksums) → cut
+reads over → dual-write window → cut writes → keep the dedicated instance
+warm for 30 days. *Rollback:* reverse the replication direction and repoint
+DNS — per-tenant, not fleet-wide, and rehearsed on a friendly tenant first
+(the same canary pattern as `--tenant`). Sequencing: smallest, friendliest
+customers first; enterprise and compliance-sensitive accounts last — or
+never (see Phase 3).
+
+**Phase 3 — pooled tables + RLS for the tail, dedicated schemas for the
+head.** Full row-level-security pooling only ever pays for itself on the
+long tail of small practices; the largest / most compliance-sensitive
+accounts stay schema-per-tenant indefinitely, and that's a feature ("your
+data lives in its own schema" is a sales answer, not a compromise). The
+honest risk statement: **a bad RLS policy is a breach, not a bug.** If this
+phase happens at all, the entry criteria are: tenant id set by connection
+middleware (session GUC), never by query authors; RLS policies on every
+table with no bypass roles in the app path; and an automated cross-tenant
+leak test in CI — connect as tenant A, run the full API surface, assert zero
+rows of tenant B, for every migration. *Rollback:* a pooled tenant can be
+extracted back to a schema by filtered dump — kept tested, not theoretical.
+
+**What never changes, in any phase:** patients and providers authenticate
+only on tenant origins; the directory stores hashes and routing, never PHI
+or credentials; and the isolation property currently proven by
+`make verify` must have an equivalent executable proof in each new topology
+before any tenant migrates onto it. A central identity provider (one
+Brydon-wide patient login, SSO into tenants) is a candidate *after* Phase 2
+— it was considered for this exercise and rejected as a premature shared
+credential surface; at fleet scale, done properly with passkeys and
+per-tenant SSO federation, it becomes worth its compliance cost.
 
 ## What I'd do differently with more time
 
-<!-- TODO -->
+- **Real auth on tenant origins** — per-tenant OIDC with passkeys/WebAuthn
+  and MFA. The current forms are inert by design, but the handoff-token
+  contract was shaped so a real IdP slots in behind the same landing pages.
+- **Asymmetric handoff signing.** The directory currently shares a symmetric
+  key with tenant apps; it should sign with a private key tenants verify
+  against a public one, so a compromised tenant can't mint handoffs.
+- **Real state stores.** The directory index in a small encrypted Postgres
+  with an audited sync API (push-on-CRUD from tenants, mTLS); used-token IDs
+  and rate counters in Redis with TTLs instead of per-process memory.
+- **An automated test suite.** The flows verified by hand and in
+  `scripts/verify_isolation.sh` — uniform hit/miss bodies *and timing*,
+  single-use enforcement, cross-tenant handoff rejection, the two-clinics
+  and dual-role emails — belong in pytest against the compose stack, in CI.
+- **Operational hardening.** TLS everywhere (Caddy makes this nearly free),
+  secrets from a manager instead of compose env, structured audit logs on
+  every directory lookup and redeem (who asked, hash prefix, outcome), and
+  real deliverability (DKIM/SPF/DMARC) for portal mail — patients must be
+  able to trust these emails, or the whole discovery channel trains them to
+  click lookalikes.
+- **A tighter demo of the marketing flow** — the provider form posts
+  cross-origin from the static site; a real deployment would proxy it
+  same-origin and add CSRF protection.
