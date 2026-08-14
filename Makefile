@@ -1,4 +1,4 @@
-.PHONY: up down seed logs demo verify remind
+.PHONY: up down seed logs demo verify remind fleet-status fleet-migrate
 
 seed:
 	python3 seeds/generate.py
@@ -28,6 +28,13 @@ demo:
 	@echo ""
 	@curl -s http://lakeside.brydon.localhost:8080/healthz
 	@echo ""
+
+# Bonus: fleet schema management across N isolated deployments.
+fleet-status:
+	@python3 ops/fleet_migrate.py status || true
+
+fleet-migrate:
+	@python3 ops/fleet_migrate.py apply
 
 # Simulate Riverside's reminder job: pre-signed deep link, no discovery
 # round-trip. The email lands in Mailpit (http://localhost:8025).

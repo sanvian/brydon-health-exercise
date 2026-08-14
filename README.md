@@ -207,11 +207,35 @@ R4-shaped instead (`seeds/generate.py`).
   labeled demo seam: it lets a reviewer verify the isolation claim in two
   clicks. In the real product it sits behind staff authentication.
 
-## Bonus: fleet operations problem
+## Bonus: the fleet drift problem
 
-<!-- TODO: version drift across N single-tenant deployments; migration
-     runner that applies schema changes across all tenants and reports
-     per-tenant schema versions. -->
+The unmentioned problem this architecture creates: with N fully isolated
+deployments, every schema change is N separate migrations, and nothing forces
+them to happen together. Two tenants a version apart is silent until an app
+deploy assumes a column one database doesn't have. "The code bases are
+identical (we are told)" — the parenthetical is the problem statement: drift
+is the operational tax of the single-tenant model, and it grows linearly with
+sales.
+
+`ops/fleet_migrate.py` is the solution: numbered SQL migrations applied
+per-tenant with a `schema_migrations` ledger, one transaction per migration
+per tenant (a failure stops that tenant at its last good version — never
+half-applied), with a drift report. It reaches each database via
+`docker compose exec` because the tenant DBs publish no ports and live on
+private networks — the same per-deployment access constraint the real
+MSP-hosted fleet would impose.
+
+```bash
+make fleet-status                              # all tenants at 0000
+python3 ops/fleet_migrate.py apply --tenant riverside   # canary
+make fleet-status                              # DRIFT: riverside ahead (exit 2)
+make fleet-migrate                             # converge; idempotent
+```
+
+The canary flag doubles as the real-world rollout pattern: migrate one
+friendly tenant, watch it, then converge the fleet. This tool is also
+deliberately Phase-1 groundwork for the migration plan below — you cannot
+consolidate N databases you can't first prove are at the same version.
 
 ## Migration plan to multi-tenant
 
