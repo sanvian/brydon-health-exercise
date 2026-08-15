@@ -110,18 +110,29 @@ expiry, single-use) → redirect to the clinic's **own sign-in page** with a
 fresh 60-second handoff token proving the routing came from the directory.
 The email→clinic mapping is health information ("this family attends
 pediatric therapy at Riverside"), so it is only ever revealed inside an inbox
-the requester already controls.
+the requester already controls. Throttled requests still return the
+uniform page and simply skip the send — rate limiting itself never becomes an
+observable signal; the cost is a delayed email for a legitimate user who
+shares a window with a prober.
 
 **Providers (deliverable 3).** The marketing "Log In" posts to the same
 lookup with `audience=provider`. A registered staff email redirects
 immediately to that clinic's staff login — home-realm discovery, the way
 Microsoft 365 or Slack resolve a workspace. The disclosure is accepted
-deliberately: staff emails are semi-public and mostly clinic-domain, so a
-redirect reveals little, and only an *exact registered address* triggers
-differential behavior. Unrecognized addresses degrade to the patient posture
-(uniform page), and rate limiting blunts bulk probing — keyed on both source
-IP *and* the peppered email hash, so fanning one target address across many
-hosts trips the limit the same way a single noisy IP does.
+deliberately, and it's worth being precise about what leaks: not *where
+someone works* — a clinic-domain email announces that already — but *that the
+clinic is a Brydon customer*, which is the fact this exercise protects. The
+accepted exposure is narrow: it requires an exact registered address,
+confirms one organization per probe rather than dumping a list, and degrades
+to the uniform patient posture for anything unrecognized. Rate limiting
+blunts bulk probing — keyed on both source IP *and* the peppered email hash,
+so fanning one target address across many hosts trips the limit the same way
+a single noisy IP does. This is the same trade Microsoft 365 and Slack make
+for workspace resolution, for the same reason: daily-use professionals won't
+tolerate an email round-trip on every sign-in. A deployment that weighs the
+confidentiality obligation more heavily than staff convenience can refuse
+the trade entirely — providers then get the patient posture (uniform page,
+emailed link), at the cost of one inbox round-trip per new device.
 
 **Reminder deep links (the PDF's automated-reminders hint).** The sender of a
 reminder — the tenant's own EHR — already knows the tenant, so discovery
